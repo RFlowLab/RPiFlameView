@@ -141,6 +141,24 @@ Videos are written as raw `.h264`. Wrap them for playback with:
 ffmpeg -framerate 30 -i record.h264 -c copy record.mp4
 ```
 
+## Checking a change without a Pi
+
+`mock_run.py` drives the GUI through the whole workflow with the `rpicam`
+subprocess stubbed and `~` redirected into a temporary sandbox, so it runs on
+any machine with Python and Tkinter and touches nothing outside `/tmp`:
+
+```bash
+python3 mock_run.py -v
+```
+
+It checks folder naming, the repeated-shutter counter, metadata, `STOP`
+handling and input validation, and exits non-zero on failure. Drop `-v` for
+quiet output.
+
+It cannot check that `rpicam-*` accepts the flags or that the camera behaves —
+those still need a run on the Pi. Treat a pass as "the plumbing is intact", not
+"this is ready to ship".
+
 ## Known quirks
 
 - The photo output path contains a literal `25ms` segment that predates the
