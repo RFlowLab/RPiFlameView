@@ -10,6 +10,7 @@ camera behaves; that still needs a run on the Pi.
 
     python3 mock_run.py           # quiet, exit 0 on success
     python3 mock_run.py -v        # show the commands and the folder tree
+    python3 mock_run.py --gui     # open the real window to click through by hand
 
 The scenario runs inside root.mainloop(): tkinter only permits cross-thread
 root.after() calls while the interpreter is dispatching, so a harness driven by
@@ -27,6 +28,7 @@ import types
 import tkinter as tk
 
 VERBOSE = "-v" in sys.argv or "--verbose" in sys.argv
+GUI = "--gui" in sys.argv
 REPO = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, REPO)
 
@@ -78,11 +80,14 @@ GUI_12.subprocess = types.SimpleNamespace(
 )
 
 DIALOGS = []
-GUI_12.messagebox = types.SimpleNamespace(
-    showinfo=lambda t, m: DIALOGS.append((t, m)),
-    showerror=lambda t, m: DIALOGS.append((t, m)),
-    askokcancel=lambda t, m: (DIALOGS.append((t, m)), True)[1],
-)
+if not GUI:
+    # Headless: dialogs would block, so record them instead. In --gui mode the
+    # real messagebox stays in place so they can be seen and clicked.
+    GUI_12.messagebox = types.SimpleNamespace(
+        showinfo=lambda t, m: DIALOGS.append((t, m)),
+        showerror=lambda t, m: DIALOGS.append((t, m)),
+        askokcancel=lambda t, m: (DIALOGS.append((t, m)), True)[1],
+    )
 
 FAILURES = []
 def check(label, condition, detail=""):
@@ -103,10 +108,13 @@ with open("run_a.txt", "w") as f:
     f.write("Videos 8000 4000 30\n")
     f.write("Photos 11000 32000 1000\n")   # same shutter as row 1 -> _2 suffix
 
-root = tk.Tk(); root.withdraw()
+root = tk.Tk()
+if not GUI:
+    root.withdraw()
 app = GUI_12.RaspberryPiGUI(root)
 STATUS = []
-app.set_status = lambda m: STATUS.append(m)
+if not GUI:
+    app.set_status = lambda m: STATUS.append(m)
 
 
 def pump(limit=20.0):
@@ -238,6 +246,33 @@ def scenario():
                   DIALOGS[0][1] if DIALOGS else "no dialog, camera ran")
             values[0].set(good)
 
+
+if GUI:
+    print(f"""
+Mock GUI -- the camera is stubbed, so every capture succeeds instantly
+and writes placeholder files. Nothing touches your real Desktop.
+
+  parameter file : run_a  (already in the working directory)
+  output goes to : {os.path.join(SANDBOX, 'Desktop')}
+
+Click through: file.txt -> Next -> Next -> Create folder -> Start.
+Camera commands are printed below as they are issued. Close the window
+when done; the sandbox is left in place so you can inspect the output.
+""")
+    _real_popen = FakeCameraProcess
+    class LoggingCameraProcess(_real_popen):
+        def __init__(self, command):
+            print(f"  [camera] {' '.join(str(c) for c in command)}\n", flush=True)
+            super().__init__(command)
+    GUI_12.subprocess.Popen = LoggingCameraProcess
+
+    def on_close():
+        app.stop_camera()
+        root.destroy()
+    root.protocol("WM_DELETE_WINDOW", on_close)
+    root.mainloop()
+    print(f"Sandbox left at: {SANDBOX}")
+    sys.exit(0)
 
 try:
     root.after(0, lambda: (scenario(), root.quit()))
