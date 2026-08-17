@@ -45,11 +45,28 @@ class RaspberryPiGUI:
         self.Entry_widgets=[]
         self.timelapse_framerate = []
         self.radio_buttons = []
-        self.img = tk.PhotoImage(file = 'ReFlowLab_signature.gif')
+        self.img = self.load_signature_image()
         self.default_file_name = datetime.now().strftime("%Y%m%d")
         self.create_widgets()
 
-    def read_parameter(self, filename): 
+    def load_signature_image(self):
+        """Load the lab signature image. The GUI still starts without it.
+
+        Looked up next to the script first, then in the working directory,
+        so it keeps working however the program is launched.
+        """
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        for folder in (script_dir, os.getcwd()):
+            image_path = os.path.join(folder, 'ReFlowLab_signature.gif')
+            if not os.path.exists(image_path):
+                continue
+            try:
+                return tk.PhotoImage(file=image_path)
+            except tk.TclError:
+                pass
+        return None
+
+    def read_parameter(self, filename):
         
         self.check_continue_ornot=True
 
@@ -122,7 +139,10 @@ class RaspberryPiGUI:
         self.label_title1 = tk.Label( self.Frame_title , text="ReactingFlow  Lab",fg='#DC143C',font=('Georgia',18,'bold'),pady=3) 
         self.label_title1.grid(row=0, column=2) 
                                                
-        self.label_img = tk.Label( self.Frame_title , image = self.img) 
+        if self.img is not None:
+            self.label_img = tk.Label( self.Frame_title , image = self.img)
+        else:
+            self.label_img = tk.Label( self.Frame_title , text="ReFlowLab",fg='#666666',font=('Georgia',14,'italic'),padx=10)
         self.label_img.grid(row=0, column=3)
 
         '''self.label_filename = tk.Label(self.Frame1, text="txt file",fg='#666666',font=('Georgia',11,'bold'),pady=2) 
@@ -494,30 +514,28 @@ class RaspberryPiGUI:
             self.parameter_form(False)
             return
 
-        for i in range(N):                                 
-            photos_folder = os.path.expanduser(f"~/Desktop/{self.default_file_name}/{self.fuel}/25ms/{self.concentration}pc/{self.eq}eq/{self.power_kw}kW") 
-            videos_folder = os.path.expanduser(f"~/Desktop/{self.default_file_name}/{self.fuel}/record/{self.concentration}pc/{self.eq}eq/{self.power_kw}kW")
-            os.makedirs(photos_folder, exist_ok=True)      
-            os.makedirs(videos_folder, exist_ok=True)
-        
+        photos_folder = os.path.expanduser(f"~/Desktop/{self.default_file_name}/{self.fuel}/25ms/{self.concentration}pc/{self.eq}eq/{self.power_kw}kW")
+        videos_folder = os.path.expanduser(f"~/Desktop/{self.default_file_name}/{self.fuel}/record/{self.concentration}pc/{self.eq}eq/{self.power_kw}kW")
+        os.makedirs(photos_folder, exist_ok=True)
+        os.makedirs(videos_folder, exist_ok=True)
+
         photos_shutter=[]
         videos_shutter=[]
-        for i in range(N):                    
-            if self.choice[i].get() == 1:  
-                shutter=self.shutter[i].get()
+        for i in range(N):
+            shutter=self.shutter[i].get()
+            if self.choice[i].get() == 1:
                 photos_shutter.append(shutter)
-                N=photos_shutter.count(shutter)-1
+                dup_offset=photos_shutter.count(shutter)-1
                 n=self.get_subfolder_number( photos_folder,shutter)
-                subfolder_name = f"{self.fuel}/25ms/{self.concentration}pc/{self.eq}eq/{self.power_kw}kW/{shutter}_{n+1+N}"  
-             
-            else:   
-                shutter=self.shutter[i].get()
+                subfolder_name = f"{self.fuel}/25ms/{self.concentration}pc/{self.eq}eq/{self.power_kw}kW/{shutter}_{n+1+dup_offset}"
+
+            else:
                 videos_shutter.append(shutter)
-                N=videos_shutter.count(shutter)-1
+                dup_offset=videos_shutter.count(shutter)-1
                 n=self.get_subfolder_number( videos_folder,shutter)
-                subfolder_name = f"{self.fuel}/record/{self.concentration}pc/{self.eq}eq/{self.power_kw}kW/{shutter}_{n+1+N}"
-                
-            self.file_name[i].set(self.default_file_name + '/' + subfolder_name) 
+                subfolder_name = f"{self.fuel}/record/{self.concentration}pc/{self.eq}eq/{self.power_kw}kW/{shutter}_{n+1+dup_offset}"
+
+            self.file_name[i].set(self.default_file_name + '/' + subfolder_name)
 
         self.button_next2.grid_forget()      
         self.button_next3 = tk.Button(self.frame_button, text="Create folder",bg="#D3D3D3", width=15,font=('Georgia',11), command=self.create_folder) 
@@ -545,48 +563,57 @@ class RaspberryPiGUI:
         entry.grid(row=1+index, column=col,pady=0) 
         self.Entry_widgets.append(entry)
 
+    def show_folder_error(self, message, row):
+        """Show a folder problem under the parameter form."""
+        messagebox.showinfo("error", f"{message}\n")
+        self.clear_frame(self.frame_message)
+        tk.Label(
+            self.frame_message, fg="red", font=('Arial',10), text=message
+        ).grid(row=row+2, column=3)
+
     def create_folder(self):
-        
+
         N = self.set_number
-        existence_confirmation = 0           
-        for i in range(N):                    
-            file_name = self.file_name[i].get()  
-            output_folder = os.path.expanduser(f"~/Desktop/{file_name}") 
+        names = []
+        folders = []
+        for i in range(N):
+            file_name = self.file_name[i].get().strip()
+            if not file_name:
+                self.show_folder_error(f"Row {i+1} has no file name.", N)
+                return
+            names.append(file_name)
+            folders.append(os.path.expanduser(f"~/Desktop/{file_name}"))
 
-            if os.path.exists(output_folder):   
-                existence_confirmation = 1       
-                command = "File " + file_name + " is already exists."
-                
-                messagebox.showinfo("error",f"{command}\n")
-                         
-                self.clear_frame(self.frame_message)                        
-                error_msg = tk.StringVar()       
-                label_error_msg = tk.Label(self.frame_message, fg="red", font=('Arial',10), textvariable=error_msg)
-                label_error_msg.grid(row=N+2, column=3)
-                error_msg.set(command)
-                break                           
+        # Folder names stay editable until this point, so two rows can end up
+        # pointing at the same directory. Catch that before creating anything.
+        duplicates = sorted({name for name in names if names.count(name) > 1})
+        if duplicates:
+            self.show_folder_error("Duplicate file name: " + ", ".join(duplicates), N)
+            return
 
-        if existence_confirmation == 0: 
-            for i in range(N):          
-                file_name = self.file_name[i].get()
-                output_folder = os.path.expanduser(f"~/Desktop/{file_name}") 
-                os.makedirs(output_folder)    
-                print(f"Folder created at {output_folder}")  
+        for i, output_folder in enumerate(folders):
+            if os.path.exists(output_folder):
+                self.show_folder_error("File " + names[i] + " is already exists.", N)
+                return
 
-            for i,entry in enumerate(self.Entry_widgets):
-                if (i-3)%4 ==0: 
-                    entry.config(state=tk.DISABLED)
-            self.change_row.config(state=tk.DISABLED)
-            self.button_add.grid_forget()
-            self.button_remove.grid_forget()
-            self.button_save.grid_forget()
-            self.button_next3.grid_forget() 
+        for output_folder in folders:
+            os.makedirs(output_folder, exist_ok=True)
+            print(f"Folder created at {output_folder}")
 
-            self.label_blank = tk.Label(self.frame_button, text="  " ,width=50,pady=10)
-            self.label_blank.grid(row=0, column=1,padx=30,pady=10)
-            self.button_start1 = tk.Button(self.frame_button, text="Start", bg="#D3D3D3", width=15, font=('Georgia',11),command=self.take_photo)
-            self.button_start1.grid(row=0, column=2,padx=30,pady=10) 
-            
+        for i,entry in enumerate(self.Entry_widgets):
+            if (i-3)%4 ==0:
+                entry.config(state=tk.DISABLED)
+        self.change_row.config(state=tk.DISABLED)
+        self.button_add.grid_forget()
+        self.button_remove.grid_forget()
+        self.button_save.grid_forget()
+        self.button_next3.grid_forget()
+
+        self.label_blank = tk.Label(self.frame_button, text="  " ,width=50,pady=10)
+        self.label_blank.grid(row=0, column=1,padx=30,pady=10)
+        self.button_start1 = tk.Button(self.frame_button, text="Start", bg="#D3D3D3", width=15, font=('Georgia',11),command=self.take_photo)
+        self.button_start1.grid(row=0, column=2,padx=30,pady=10)
+
     def get_focus_args(self):
         """Return rpicam autofocus arguments from the GUI settings."""
         mode = self.focus_mode.get().strip().lower()
@@ -613,12 +640,19 @@ class RaspberryPiGUI:
     def command_to_text(self, command):
         return " ".join(str(x) for x in command)
 
-    def write_metadata(self, output_folder, mode, command, extra=None):
-        """Save experiment settings next to every generated photo/video set."""
-        os.makedirs(output_folder, exist_ok=True)
-        data = {
-            "created_at": datetime.now().isoformat(timespec="seconds"),
-            "mode": mode,
+    def parse_count(self, value, label):
+        """Validate an entry rpicam expects as a whole, non-negative number."""
+        try:
+            number = int(str(value).strip())
+        except ValueError:
+            raise ValueError(f"{label} must be a whole number, got '{value}'.")
+        if number < 0:
+            raise ValueError(f"{label} must not be negative, got '{value}'.")
+        return number
+
+    def collect_metadata(self):
+        """Read the experiment settings off the GUI. Main thread only."""
+        return {
             "fuel": self.fuel,
             "concentration_pc": self.entry_concentration.get(),
             "eq": self.entry_EQ.get(),
@@ -627,8 +661,17 @@ class RaspberryPiGUI:
             "lens_position": self.entry_lens_position.get(),
             "gain": self.entry_gain.get(),
             "monitor_shutter_us": self.entry_monitor_shutter.get(),
-            "camera_command": self.command_to_text(command),
         }
+
+    def write_metadata(self, output_folder, mode, command, settings, extra=None):
+        """Save experiment settings next to every generated photo/video set."""
+        os.makedirs(output_folder, exist_ok=True)
+        data = {
+            "created_at": datetime.now().isoformat(timespec="seconds"),
+            "mode": mode,
+        }
+        data.update(settings)
+        data["camera_command"] = self.command_to_text(command)
         if extra:
             data.update(extra)
 
@@ -737,6 +780,48 @@ class RaspberryPiGUI:
         )
         self.worker_thread.start()
 
+    def build_capture_plan(self):
+        """Resolve everything the camera worker needs. Main thread only.
+
+        Tk variables must not be read from a worker thread, so the whole
+        sequence is snapshotted into plain Python values up front.
+        """
+        plan = {
+            "focus_args": self.get_focus_args(),
+            "gain": self.get_gain_value(),
+            "settings": self.collect_metadata(),
+            "monitor": self.build_monitor_plan(),
+            "jobs": [],
+        }
+
+        for i in range(self.set_number):
+            file_name = self.file_name[i].get().strip()
+            if not file_name:
+                raise ValueError(f"Row {i+1} has no file name.")
+            plan["jobs"].append({
+                "output_folder": os.path.expanduser(f"~/Desktop/{file_name}"),
+                "duration_ms": self.parse_count(self.t[i].get(), f"t (row {i+1})"),
+                "shutter_us": self.parse_count(self.shutter[i].get(), f"shutter (row {i+1})"),
+                "timing": self.parse_count(
+                    self.timelapse_framerate[i].get(), f"timelapse/framerate (row {i+1})"
+                ),
+                "is_photo": self.choice[i].get() == 1,
+            })
+        return plan
+
+    def build_monitor_plan(self):
+        """Resolve the end-of-sequence monitor recording. Main thread only."""
+        shutter = self.entry_monitor_shutter.get().strip()
+        if not shutter:
+            raise ValueError("Please enter the monitor shutter.")
+        return {
+            "shutter": shutter,
+            "folder": os.path.expanduser(
+                f"~/Desktop/{self.default_file_name}/{self.fuel}/exp/"
+                f"{self.concentration}pc/{self.eq}eq/{self.entry_kw.get()}kW"
+            ),
+        }
+
     def take_photo(self):
         """Run the complete experiment sequence without blocking Tkinter."""
         if self.current_process is not None and self.current_process.poll() is None:
@@ -744,8 +829,7 @@ class RaspberryPiGUI:
             return
 
         try:
-            self.get_focus_args()
-            self.get_gain_value()
+            plan = self.build_capture_plan()
         except ValueError as exc:
             messagebox.showinfo("Invalid camera setting", str(exc))
             return
@@ -756,28 +840,30 @@ class RaspberryPiGUI:
 
         self.worker_thread = threading.Thread(
             target=self._take_photo_worker,
+            args=(plan,),
             daemon=True
         )
         self.worker_thread.start()
 
-    def _take_photo_worker(self):
-        N = self.set_number
+    def _take_photo_worker(self, plan):
+        focus_args = plan["focus_args"]
+        gain = plan["gain"]
+        settings = plan["settings"]
+        jobs = plan["jobs"]
+        N = len(jobs)
+        completed = 0
 
         try:
-            focus_args = self.get_focus_args()
-            gain = self.get_gain_value()
-
-            for i in range(N):
+            for i, job in enumerate(jobs):
                 if self.stop_requested:
                     break
 
-                file_name = self.file_name[i].get()
-                output_folder = os.path.expanduser(f"~/Desktop/{file_name}")
-                T = self.t[i].get()
-                shutter = self.shutter[i].get()
-                timing = self.timelapse_framerate[i].get()
+                output_folder = job["output_folder"]
+                T = job["duration_ms"]
+                shutter = job["shutter_us"]
+                timing = job["timing"]
 
-                if self.choice[i].get() == 1:
+                if job["is_photo"]:
                     command = [
                         "rpicam-still",
                         "-t", str(T),
@@ -822,7 +908,7 @@ class RaspberryPiGUI:
                         "resolution": "1920x1080",
                     }
 
-                self.write_metadata(output_folder, capture_type, command, extra)
+                self.write_metadata(output_folder, capture_type, command, settings, extra)
 
                 ok = self.run_camera_process(
                     command,
@@ -830,63 +916,36 @@ class RaspberryPiGUI:
                 )
                 if not ok:
                     break
+                completed += 1
 
             # Preserve the original behavior: after the experiment sequence,
             # start the end monitor until the user presses STOP.
-            if not self.stop_requested:
-                self._end_monitor_worker()
+            if completed == N and not self.stop_requested:
+                self._end_monitor_worker(plan["monitor"], focus_args, gain, settings)
 
         finally:
-            self.root.after(0, self._sequence_finished)
+            self.root.after(0, lambda c=completed: self._sequence_finished(c, N))
 
-    def _sequence_finished(self):
+    def _sequence_finished(self, completed, total):
         if hasattr(self, "button_start1"):
             self.button_start1.config(state=tk.NORMAL)
         if self.stop_requested:
-            self.set_status("Experiment stopped.")
-        elif self.current_process is None:
+            self.set_status(f"Experiment stopped after {completed}/{total} sets.")
+        elif completed == total:
             self.set_status("Experiment sequence finished.")
+        else:
+            self.set_status(f"Experiment stopped early: set {completed + 1}/{total} failed.")
 
-    def end_monitor(self):
-        """Public wrapper for end-monitor recording."""
-        if self.current_process is not None and self.current_process.poll() is None:
-            messagebox.showinfo("Camera busy", "A camera process is already running.")
-            return
-        self.stop_requested = False
-        self.worker_thread = threading.Thread(
-            target=self._end_monitor_worker,
-            daemon=True
-        )
-        self.worker_thread.start()
+    def _end_monitor_worker(self, monitor, focus_args, gain, settings):
+        monitor_folder = monitor["folder"]
+        shutter = monitor["shutter"]
 
-    def _end_monitor_worker(self):
-        try:
-            focus_args = self.get_focus_args()
-            gain = self.get_gain_value()
-        except ValueError as exc:
-            self.root.after(0, lambda e=str(exc): messagebox.showinfo("Invalid camera setting", e))
-            return
-
-        self.monitor_shutter = self.entry_monitor_shutter.get().strip()
-        if not self.monitor_shutter:
-            self.root.after(
-                0,
-                lambda: messagebox.showinfo(
-                    "Data not found", "Please enter the monitor shutter."
-                )
-            )
-            return
-
-        monitor_folder = os.path.expanduser(
-            f"~/Desktop/{self.default_file_name}/{self.fuel}/exp/"
-            f"{self.concentration}pc/{self.eq}eq/{self.entry_kw.get()}kW"
-        )
         os.makedirs(monitor_folder, exist_ok=True)
         max_number = self.get_monitor_subfolder_number(monitor_folder)
 
         monitor_file_name = os.path.join(
             monitor_folder,
-            f"test{max_number + 1}_{self.monitor_shutter}"
+            f"test{max_number + 1}_{shutter}"
         )
         os.makedirs(monitor_file_name, exist_ok=True)
 
@@ -898,7 +957,7 @@ class RaspberryPiGUI:
             "--height", "1080",
             "--framerate", "30",
             "--gain", str(gain),
-            "--shutter", str(self.monitor_shutter),
+            "--shutter", str(shutter),
             *focus_args,
             "--awbgains", "2.0,2.3",
             "-o", os.path.join(monitor_file_name, "record.h264")
@@ -908,6 +967,7 @@ class RaspberryPiGUI:
             monitor_file_name,
             "end_monitor",
             command,
+            settings,
             {"framerate_fps": 30, "resolution": "1920x1080"}
         )
         self.run_camera_process(
@@ -964,6 +1024,7 @@ class RaspberryPiGUI:
             monitor_file_name,
             "temp_monitor",
             command,
+            self.collect_metadata(),
             {"framerate_fps": 30, "resolution": "1920x1080", "monitor_name": monitor_name}
         )
 
@@ -1035,9 +1096,29 @@ class RaspberryPiGUI:
 
         self.get_entry_widgets_value()
 
-        r =( self.change_row.get()).strip().split()  #r是一堆欄數,ex:2 4 14，若沒輸入東西會是空列表
-        for i,rn in enumerate( r): #換成int type
-            r[i]=int(rn)
+        r=[]  #r是一堆欄數,ex:2 4 14，若沒輸入東西會是空列表
+        for token in ( self.change_row.get()).strip().split(): #換成int type
+            try:
+                r.append(int(token))
+            except ValueError:
+                messagebox.showinfo("Invalid row", f"'{token}' is not a row number.")
+                return
+
+        limit=self.parameter_list[5]
+        # Add takes an insert position (0 = before the first row); remove takes
+        # a 1-based row number. Out-of-range values used to raise IndexError,
+        # and "0" silently removed the last row.
+        if function_choice:
+            allowed=range(0, limit+1)
+            hint=f"Enter a position between 0 and {limit}."
+        else:
+            allowed=range(1, limit+1)
+            hint=f"Enter a row between 1 and {limit}." if limit else "There are no rows to remove."
+        for rn in r:
+            if rn not in allowed:
+                messagebox.showinfo("Invalid row", f"Row {rn} is out of range. {hint}")
+                return
+
         r.sort() #由小到大排
         if function_choice:
             for i,rn in enumerate(r):   #rn=2,rn=4,rn=14
@@ -1049,7 +1130,7 @@ class RaspberryPiGUI:
                 self.parameter_list[4].insert(n,1) 
                 self.parameter_list[5]=self.parameter_list[5]+1
         else:
-            for i,rn in enumerate(r):   #rn=2,rn=4,rn=14
+            for i,rn in enumerate(sorted(set(r))):   #rn=2,rn=4,rn=14
                 n=int(rn)-i-1
                 self.parameter_list[0].pop(n) 
                 self.parameter_list[1].pop(n)  
