@@ -162,6 +162,21 @@ It cannot check that `rpicam-*` accepts the flags or that the camera behaves —
 those still need a run on the Pi. Treat a pass as "the plumbing is intact", not
 "this is ready to ship".
 
+To inspect the interface by hand, the same stubs can drive the real window:
+
+```bash
+python3 mock_run.py --gui
+```
+
+Every capture succeeds instantly and writes placeholder files into the sandbox,
+so the whole click-through — `file.txt` → `Next` → `Next` → `Create folder` →
+`Start` → `STOP` — works with no camera attached. Each stubbed camera command is
+printed as it is issued, and the sandbox path is reported on exit.
+
+The window asks for 1750x650 and the top control row needs about 1250 px. On a
+narrower display the right-hand buttons (`Test Camera`, `Monitor`, `STOP`,
+`Next`) run off the edge, so check it at the resolution the Pi actually uses.
+
 ## Known quirks
 
 - The photo output path contains a literal `25ms` segment that predates the
